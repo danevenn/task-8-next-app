@@ -24,7 +24,9 @@ export async function GET(request: Request) {
       categoryId: categoryId ?? undefined,
     },
     include: { category: { select: { id: true, name: true } } },
-    orderBy: { [sortBy]: sortOrder },
+    // Desempate por id: evita orden no determinista cuando hay valores
+    // iguales en el campo de orden (p.ej. createdAt idéntico del seed).
+    orderBy: [{ [sortBy]: sortOrder }, { id: "asc" }],
   });
 
   return NextResponse.json(products);

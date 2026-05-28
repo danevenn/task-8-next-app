@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "motion/react";
 import { Minus, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,7 @@ export function ProductCard({ product }: { product: ProductWithCategory }) {
   const outOfStock = product.stock === 0;
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col transition-shadow hover:shadow-md">
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-semibold leading-tight">{product.name}</h3>
@@ -69,19 +70,29 @@ export function ProductCard({ product }: { product: ProductWithCategory }) {
             variant="outline"
             size="icon-sm"
             onClick={() => changeStock(-1)}
-            disabled={outOfStock || updateStock.isPending}
+            disabled={outOfStock}
             aria-label="Disminuir stock"
           >
             <Minus className="size-3.5" />
           </Button>
-          <Badge variant={outOfStock ? "destructive" : "outline"} className="min-w-12 justify-center">
-            {product.stock} ud.
+          <Badge
+            variant={outOfStock ? "destructive" : "outline"}
+            className="min-w-14 justify-center tabular-nums"
+          >
+            <motion.span
+              key={product.stock}
+              initial={{ scale: 1.4, opacity: 0.5 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 500, damping: 18 }}
+            >
+              {product.stock}
+            </motion.span>
+            <span className="ml-1">ud.</span>
           </Badge>
           <Button
             variant="outline"
             size="icon-sm"
             onClick={() => changeStock(1)}
-            disabled={updateStock.isPending}
             aria-label="Aumentar stock"
           >
             <Plus className="size-3.5" />

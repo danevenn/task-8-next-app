@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion } from "motion/react";
 import { PackageOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -10,7 +11,7 @@ import { ProductCard } from "./product-card";
 const GRID = "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
 
 export function ProductList() {
-  const { data: products, isLoading, isError, error, refetch, isFetching } = useProductsQuery();
+  const { data: products, isLoading, isError, error, refetch } = useProductsQuery();
 
   if (isLoading) {
     return (
@@ -56,13 +57,21 @@ export function ProductList() {
   }
 
   return (
-    <div className="space-y-3">
-      {isFetching && <p className="text-xs text-muted-foreground">Actualizando…</p>}
-      <div className={GRID}>
+    <motion.div layout className={GRID}>
+      <AnimatePresence mode="popLayout" initial={false}>
         {products.map((p) => (
-          <ProductCard key={p.id} product={p} />
+          <motion.div
+            key={p.id}
+            layout
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.92 }}
+            transition={{ type: "spring", stiffness: 420, damping: 32 }}
+          >
+            <ProductCard product={p} />
+          </motion.div>
         ))}
-      </div>
-    </div>
+      </AnimatePresence>
+    </motion.div>
   );
 }

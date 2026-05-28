@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useUIStore } from "@/stores/ui-store";
 import type { ProductWithCategory } from "@/lib/types";
 import type { CreateProductInput, UpdateProductInput } from "@/lib/validations";
@@ -23,6 +28,9 @@ export function useProductsQuery() {
       if (!res.ok) await throwApiError(res, "Error al cargar los productos");
       return res.json() as Promise<ProductWithCategory[]>;
     },
+    // Al cambiar filtros/orden, mantenemos los datos previos visibles
+    // mientras llega la nueva lista (sin flash de skeleton).
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -80,7 +88,7 @@ export function useUpdateStockMutation() {
         body: JSON.stringify({ stock }),
       });
       if (!res.ok) await throwApiError(res, "Error al actualizar el stock");
-      return res.json();
+      return res.json() as Promise<ProductWithCategory>;
     },
     // Actualización optimista: pintamos el nuevo stock antes de la respuesta del servidor.
     onMutate: async ({ productId, stock }) => {
@@ -95,9 +103,12 @@ export function useUpdateStockMutation() {
     onError: (_err, _vars, context) => {
       context?.snapshot.forEach(([key, data]) => queryClient.setQueryData(key, data));
     },
-    // Reconciliamos con el servidor pase lo que pase.
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
+    // Sin invalidar: escribimos la respuesta del servidor EN SU SITIO (sin refetch
+    // ni reordenar). El producto mantiene su posición y el cambio es instantáneo.
+    onSuccess: (updated) => {
+      queryClient.setQueriesData<ProductWithCategory[]>({ queryKey: ["products"] }, (old) =>
+        old?.map((p) => (p.id === updated.id ? updated : p)),
+      );
     },
   });
 }
