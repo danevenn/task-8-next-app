@@ -19,6 +19,69 @@ Aplicación full-stack para gestionar productos y categorías, construida con **
 - Ajuste de **stock** con `+`/`−` mediante **actualización optimista con rollback**.
 - Layout con barra lateral colapsable (fija en escritorio, `Sheet` en móvil).
 
+## Estructura
+
+```
+src/
+├── app/
+│   ├── layout.tsx              # Providers + AppShell + Toaster (sonner)
+│   ├── page.tsx                # Redirige a /products
+│   ├── providers.tsx           # QueryClientProvider + React Query Devtools
+│   ├── globals.css             # Tokens shadcn (base slate + primario azul propio)
+│   ├── products/page.tsx       # Página de productos
+│   ├── categories/page.tsx     # Página de categorías
+│   └── api/
+│       ├── categories/route.ts            # GET (lista), POST (crea)
+│       ├── categories/[id]/route.ts       # PATCH, DELETE (409 si tiene productos)
+│       ├── products/route.ts              # GET (search/filtro/orden), POST
+│       ├── products/[id]/route.ts         # PATCH, DELETE
+│       └── products/[id]/stock/route.ts   # PATCH solo stock
+├── components/
+│   ├── ui/                     # Primitivos shadcn/ui (base-ui)
+│   ├── app-shell.tsx           # Layout: sidebar colapsable + Sheet en móvil
+│   ├── sidebar-nav.tsx         # Navegación Productos / Categorías
+│   ├── products-view.tsx       # Vista de productos (toolbar + lista)
+│   ├── product-list.tsx        # Grid con estados loading / error / vacío
+│   ├── product-card.tsx        # Tarjeta: precio, stock ±, editar, borrar
+│   ├── product-form.tsx        # Diálogo crear/editar (react-hook-form)
+│   ├── search-bar.tsx          # Búsqueda con debounce de 300ms
+│   ├── sort-controls.tsx       # Orden: campo + dirección
+│   ├── category-filter.tsx     # Filtro por categoría
+│   ├── categories-view.tsx     # Vista de categorías
+│   ├── category-list.tsx       # Tabla de categorías
+│   └── category-form.tsx       # Diálogo crear/editar categoría
+├── hooks/
+│   ├── use-products.ts         # Query + mutaciones (stock optimista + rollback)
+│   └── use-categories.ts       # Query + mutaciones de categorías
+├── stores/
+│   └── ui-store.ts             # Zustand: búsqueda, filtro, orden, sidebar (persist)
+└── lib/
+    ├── db.ts                   # Singleton de PrismaClient
+    ├── query-client.ts         # QueryClient (staleTime / gcTime)
+    ├── validations.ts          # Esquemas zod (API + formularios)
+    ├── api.ts                  # Helper de respuesta de error de validación
+    ├── http.ts                 # throwApiError (fetch en cliente)
+    ├── types.ts                # Tipos cliente (price y fechas como string)
+    ├── format.ts               # formatPrice (Intl, EUR)
+    ├── zod-resolver.ts         # Puente de tipos zod 4 ↔ react-hook-form
+    └── utils.ts                # cn() (clsx + tailwind-merge)
+
+prisma/
+├── schema.prisma               # Modelos Category y Product
+├── seed.ts                     # Semilla: 3 categorías + 10 productos
+└── migrations/                 # Migración inicial (init)
+
+docs/
+├── arquitectura.md             # Capas, App Router vs Express, Decimal, Neon
+├── api.md                      # Los 6 endpoints + por qué el stock va aparte
+└── state-management.md         # Servidor vs UI, persist, staleTime/gcTime
+
+prisma.config.ts                # Carga .env.local + config de seed (Prisma 6)
+components.json                 # Configuración de shadcn/ui
+pnpm-workspace.yaml             # allowBuilds (build scripts permitidos)
+.env.example                    # Plantilla de variables (DATABASE_URL, DIRECT_URL)
+```
+
 ## Puesta en marcha
 
 ```bash
