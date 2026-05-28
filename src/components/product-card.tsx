@@ -18,26 +18,14 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { formatPrice } from "@/lib/format";
-import {
-  useDeleteProductMutation,
-  useUpdateStockMutation,
-} from "@/hooks/use-products";
+import { useDeleteProductMutation, useStockAdjuster } from "@/hooks/use-products";
 import { ProductForm } from "./product-form";
 import type { ProductWithCategory } from "@/lib/types";
 
 export function ProductCard({ product }: { product: ProductWithCategory }) {
-  const updateStock = useUpdateStockMutation();
+  const { adjust } = useStockAdjuster(product);
   const deleteProduct = useDeleteProductMutation();
   const [confirmOpen, setConfirmOpen] = useState(false);
-
-  const changeStock = (delta: number) => {
-    const next = Math.max(0, product.stock + delta);
-    if (next === product.stock) return;
-    updateStock.mutate(
-      { productId: product.id, stock: next },
-      { onError: (e) => toast.error(e instanceof Error ? e.message : "Error") },
-    );
-  };
 
   const onDelete = () => {
     deleteProduct.mutate(product.id, {
@@ -69,7 +57,7 @@ export function ProductCard({ product }: { product: ProductWithCategory }) {
           <Button
             variant="outline"
             size="icon-sm"
-            onClick={() => changeStock(-1)}
+            onClick={() => adjust(-1)}
             disabled={outOfStock}
             aria-label="Disminuir stock"
           >
@@ -92,7 +80,7 @@ export function ProductCard({ product }: { product: ProductWithCategory }) {
           <Button
             variant="outline"
             size="icon-sm"
-            onClick={() => changeStock(1)}
+            onClick={() => adjust(1)}
             aria-label="Aumentar stock"
           >
             <Plus className="size-3.5" />

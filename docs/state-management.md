@@ -63,15 +63,14 @@ Resumen: `staleTime` decide **cuándo refetchear** datos que se están usando; `
 
 ---
 
-## Demostración 1 — Error del servidor al ajustar stock (optimista + rollback)
+## Demostración 1 — Error del servidor al ajustar stock (optimista + debounce + rollback)
 
-`useUpdateStockMutation` hace una **actualización optimista**: pinta el nuevo stock antes de que el servidor responda y revierte si falla.
+`useStockAdjuster` (`src/hooks/use-products.ts`) hace una **actualización optimista con _debounce_** para enmascarar la latencia de la BD:
 
-Flujo (`src/hooks/use-products.ts`):
-
-1. **`onMutate`**: cancela queries de `["products"]` en vuelo, guarda un **snapshot** de la caché y aplica el nuevo stock con `setQueriesData`. La UI se actualiza al instante.
-2. **`onError`**: restaura el snapshot → el stock vuelve a su valor anterior (rollback).
-3. **`onSettled`**: invalida `["products"]` para reconciliar con el servidor pase lo que pase.
+1. **Al pulsar `+`/`−`**: el stock se escribe **al instante** en la caché (`setQueriesData`) → la UI cambia sin esperar al servidor. El valor objetivo se acumula en un `ref`.
+2. **Debounce (~400ms)**: en vez de un PATCH por clic (que en paralelo causaba "rebobinado" al volver respuestas antiguas), se envía **un único PATCH** con el valor final tras el último clic.
+3. **Éxito**: se escribe la respuesta del servidor **en su sitio** (sin refetch ni reordenar) → el producto mantiene su posición.
+4. **Error (rollback)**: toast de error + `invalidateQueries(["products"])` para resincronizar con la verdad del servidor (revierte el optimismo).
 
 **Cómo demostrarlo** (forzar un 500 temporal en `src/app/api/products/[id]/stock/route.ts`):
 
@@ -81,7 +80,7 @@ export async function PATCH() {
 }
 ```
 
-**Qué se observa en la UI**: al pulsar `+`/`−`, el contador de stock cambia **inmediatamente** (optimista). Décimas de segundo después, al llegar el 500, el contador **vuelve a su valor original** (rollback) y aparece un toast de error ("Error al actualizar el stock"). El usuario nunca ve un estado a medias y los datos quedan consistentes con el servidor. (Recuerda revertir el endpoint tras la prueba.)
+**Qué se observa en la UI**: al pulsar `+`/`−`, el contador de stock cambia **inmediatamente** (optimista). ~400ms después del último clic se envía el PATCH; al llegar el 500, el contador **vuelve a su valor del servidor** (rollback vía resincronización) y aparece un toast de error ("Error al actualizar el stock"). El usuario nunca ve un estado a medias y los datos quedan consistentes con el servidor. (Recuerda revertir el endpoint tras la prueba.)
 
 ## Demostración 2 — Estados en React Query DevTools
 
@@ -89,6 +88,6 @@ Abre el panel de **React Query DevTools** (icono flotante, abajo a la izquierda)
 
 - **`fresh`** (verde): justo tras cargar, la query `["products", …]` está fresca. Durante los primeros 2 min (`staleTime`), navegar fuera y volver **no dispara** refetch: los datos se sirven de caché.
 - **`stale`** (amarillo): pasados los 2 min, o tras invalidar (al crear/editar/borrar), la query pasa a obsoleta. Sigue mostrándose, pero el próximo montaje/foco la refetcheará.
-- **`fetching`** (azul): mientras hay una petición en curso (carga inicial, refetch en background, o el `invalidateQueries` de `onSettled` tras ajustar stock) el indicador muestra actividad. Si los datos ya estaban en caché, se siguen viendo mientras el `fetching` ocurre en segundo plano.
+- **`fetching`** (azul): mientras hay una petición en curso (carga inicial, refetch en background tras crear/editar/borrar, o una resincronización por error de stock) el indicador muestra actividad. Si los datos ya estaban en caché, se siguen viendo mientras el `fetching` ocurre en segundo plano. Nota: ajustar stock con éxito **no** dispara fetching (se escribe en caché directamente).
 
 También se aprecia el conteo de **observers**: al salir de la página de Productos, la query queda con 0 observers (inactiva) y empieza a contar su `gcTime` (10 min) antes de ser recolectada.

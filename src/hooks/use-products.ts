@@ -1,9 +1,11 @@
+import { useCallback, useEffect, useRef } from "react";
 import {
   keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useUIStore } from "@/stores/ui-store";
 import type { ProductWithCategory } from "@/lib/types";
 import type { CreateProductInput, UpdateProductInput } from "@/lib/validations";
@@ -77,38 +79,75 @@ export function useDeleteProductMutation() {
   });
 }
 
-export function useUpdateStockMutation() {
-  const queryClient = useQueryClient();
+/**
+ * Ajuste de stock optimista con debounce.
+ *
+ * El número sube/baja al instante en caché (UI inmediata) y se envía UN solo
+ * PATCH con el valor final ~400ms después del último clic. Así se enmascara la
+ * latencia de la BD y se evita el "rebobinado": antes, cada clic disparaba su
+ * propio PATCH en paralelo y cada respuesta (más antigua) sobrescribía la caché
+ * al volver, repitiendo el recorrido de subida.
+ */
+const STOCK_FLUSH_MS = 400;
 
-  return useMutation({
-    mutationFn: async ({ productId, stock }: { productId: string; stock: number }) => {
-      const res = await fetch(`/api/products/${productId}/stock`, {
+export function useStockAdjuster(product: ProductWithCategory) {
+  const queryClient = useQueryClient();
+  const targetRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const writeCache = useCallback(
+    (stock: number) => {
+      queryClient.setQueriesData<ProductWithCategory[]>({ queryKey: ["products"] }, (old) =>
+        old?.map((p) => (p.id === product.id ? { ...p, stock } : p)),
+      );
+    },
+    [queryClient, product.id],
+  );
+
+  const flush = useCallback(async () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const target = targetRef.current;
+    targetRef.current = null;
+    if (target === null) return;
+
+    try {
+      const res = await fetch(`/api/products/${product.id}/stock`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stock }),
+        body: JSON.stringify({ stock: target }),
       });
       if (!res.ok) await throwApiError(res, "Error al actualizar el stock");
-      return res.json() as Promise<ProductWithCategory>;
+      const updated = (await res.json()) as ProductWithCategory;
+      writeCache(updated.stock);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al actualizar el stock");
+      // Resincronizamos con la verdad del servidor si algo falló.
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    }
+  }, [product.id, queryClient, writeCache]);
+
+  const adjust = useCallback(
+    (delta: number) => {
+      const base = targetRef.current ?? product.stock;
+      const next = Math.max(0, base + delta);
+      if (next === base) return;
+      targetRef.current = next;
+      writeCache(next); // UI instantánea
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => void flush(), STOCK_FLUSH_MS);
     },
-    // Actualización optimista: pintamos el nuevo stock antes de la respuesta del servidor.
-    onMutate: async ({ productId, stock }) => {
-      await queryClient.cancelQueries({ queryKey: ["products"] });
-      const snapshot = queryClient.getQueriesData<ProductWithCategory[]>({ queryKey: ["products"] });
-      queryClient.setQueriesData<ProductWithCategory[]>({ queryKey: ["products"] }, (old) =>
-        old?.map((p) => (p.id === productId ? { ...p, stock } : p)),
-      );
-      return { snapshot };
-    },
-    // Rollback: restauramos cada caché al valor previo si el servidor falla.
-    onError: (_err, _vars, context) => {
-      context?.snapshot.forEach(([key, data]) => queryClient.setQueryData(key, data));
-    },
-    // Sin invalidar: escribimos la respuesta del servidor EN SU SITIO (sin refetch
-    // ni reordenar). El producto mantiene su posición y el cambio es instantáneo.
-    onSuccess: (updated) => {
-      queryClient.setQueriesData<ProductWithCategory[]>({ queryKey: ["products"] }, (old) =>
-        old?.map((p) => (p.id === updated.id ? updated : p)),
-      );
-    },
-  });
+    [product.stock, writeCache, flush],
+  );
+
+  // Si el componente se desmonta con un cambio pendiente, lo persistimos.
+  useEffect(() => {
+    return () => {
+      if (targetRef.current !== null) void flush();
+    };
+  }, [flush]);
+
+  return { adjust };
 }
